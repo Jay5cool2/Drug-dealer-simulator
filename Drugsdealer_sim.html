@@ -12,7 +12,6 @@
       margin: 0;
       padding: 20px;
     }
-
     .container {
       max-width: 1000px;
       margin: auto;
@@ -21,16 +20,13 @@
       border-radius: 10px;
       box-shadow: 0 0 20px rgba(0,255,200,0.2);
     }
-
     h1 {
       text-align: center;
       color: #00ffc8;
     }
-
     .section {
       margin-top: 30px;
     }
-
     button {
       background-color: #00ffc8;
       color: #000;
@@ -42,11 +38,9 @@
       cursor: pointer;
       transition: background 0.3s;
     }
-
     button:hover {
       background-color: #00cfa5;
     }
-
     .card {
       display: flex;
       justify-content: space-between;
@@ -57,18 +51,15 @@
       border-radius: 5px;
       flex-wrap: wrap;
     }
-
     .card div {
       flex: 1;
       padding: 5px;
     }
-
     .actions {
       display: flex;
       flex-direction: column;
       gap: 5px;
     }
-
     .disabled {
       opacity: 0.5;
       pointer-events: none;
@@ -99,10 +90,38 @@
 
   <div class="section">
     <button onclick="game.nextDay()">▶ Next Day</button>
+    <button onclick="game.saveGame()">💾 Save</button>
+    <button onclick="game.loadGame()">📂 Load</button>
   </div>
 </div>
 
 <script>
+  const LAB_BASE_COSTS = {
+    "Weed": 800,
+    "Cocaine": 1500,
+    "XTC": 1000,
+    "Heroin": 1400,
+    "Meth": 1100,
+    "LSD": 1300,
+    "Crack": 900,
+    "Fentanyl": 1800,
+    "Shrooms": 700,
+    "Ketamine": 1000
+  };
+
+  const LAB_PRODUCTION_COSTS = {
+    "Weed": 10,
+    "Cocaine": 80,
+    "XTC": 30,
+    "Heroin": 70,
+    "Meth": 50,
+    "LSD": 60,
+    "Crack": 40,
+    "Fentanyl": 90,
+    "Shrooms": 15,
+    "Ketamine": 45
+  };
+
   class Drug {
     constructor(name, basePrice) {
       this.name = name;
@@ -126,12 +145,26 @@
       this.level = 0;
     }
 
-    getUpgradeCost() {
-      return 1000 * (this.level + 1);
+    getBaseCost() {
+      return LAB_BASE_COSTS[this.drugName] || 1000;
     }
 
-    produce() {
-      return this.owned ? this.level : 0;
+    getUpgradeCost() {
+      return this.getBaseCost() * (this.level + 1);
+    }
+
+    getProductionCost() {
+      return LAB_PRODUCTION_COSTS[this.drugName] || 20;
+    }
+
+    produce(player) {
+      const amount = this.owned ? this.level : 0;
+      const totalCost = this.getProductionCost() * amount;
+      if (player.money >= totalCost && amount > 0) {
+        player.money -= totalCost;
+        return amount;
+      }
+      return 0;
     }
   }
 
@@ -160,6 +193,16 @@
       this.dealers = {};
     }
 
+    getTitle() {
+      const m = this.money;
+      if (m < 1000) return "💸 Rookie Hustler";
+      if (m < 5000) return "🧪 Street Dealer";
+      if (m < 20000) return "💼 Local Plug";
+      if (m < 50000) return "🚚 Cartel Associate";
+      if (m < 100000) return "📦 Drug Lord";
+      return "👑 Kingpin";
+    }
+
     ensureLab(drugName) {
       if (!this.labs[drugName]) {
         this.labs[drugName] = new Lab(drugName);
@@ -178,8 +221,6 @@
       if (this.money >= drug.price) {
         this.money -= drug.price;
         this.inventory[drug.name] = (this.inventory[drug.name] || 0) + 1;
-      } else {
-        alert("Not enough cash.");
       }
     }
 
@@ -199,7 +240,7 @@
 
     produceDrugs() {
       for (const lab of Object.values(this.labs)) {
-        const amount = lab.produce();
+        const amount = lab.produce(this);
         if (amount > 0) {
           this.inventory[lab.drugName] = (this.inventory[lab.drugName] || 0) + amount;
         }
@@ -230,9 +271,6 @@
       }
 
       this.money += income;
-      if (totalSold > 0) {
-        alert(`🧍 Dealers sold ${totalSold} drugs for $${income}`);
-      }
     }
   }
 
@@ -244,7 +282,12 @@
         new Drug("Cocaine", 800),
         new Drug("XTC", 300),
         new Drug("Heroin", 600),
-        new Drug("Meth", 400)
+        new Drug("Meth", 400),
+        new Drug("LSD", 500),
+        new Drug("Crack", 350),
+        new Drug("Fentanyl", 900),
+        new Drug("Shrooms", 250),
+        new Drug("Ketamine", 450)
       ];
       this.updateUI();
     }
@@ -258,6 +301,7 @@
       status.innerHTML = `
         <h2>📅 Day ${this.player.day}</h2>
         <p>💵 Cash: <strong>$${this.player.money}</strong></p>
+        <p>🎖️ Title: ${this.player.getTitle()}</p>
         <p>🎒 Inventory: ${
           Object.keys(this.player.inventory).length === 0 
             ? 'Empty' 
@@ -266,7 +310,6 @@
         }</p>
       `;
 
-      // Market
       market.innerHTML = '';
       this.drugs.forEach(drug => {
         const el = document.createElement('div');
@@ -282,24 +325,25 @@
         market.appendChild(el);
       });
 
-      // Labs
       labs.innerHTML = '';
       this.drugs.forEach(drug => {
         const lab = this.player.ensureLab(drug.name);
         const el = document.createElement('div');
         el.className = 'card';
+        const baseCost = lab.getBaseCost();
+        const prodCost = lab.getProductionCost();
         if (!lab.owned) {
           el.innerHTML = `
             <div><strong>${drug.name} Lab</strong></div>
             <div>🏭 Not owned</div>
             <div class="actions">
-              <button onclick="game.buyLab('${drug.name}')">Buy Lab ($1000)</button>
+              <button onclick="game.buyLab('${drug.name}')">Buy Lab ($${baseCost})</button>
             </div>
           `;
         } else {
           el.innerHTML = `
             <div><strong>${drug.name} Lab</strong></div>
-            <div>🏭 Level ${lab.level}</div>
+            <div>🏭 Level ${lab.level} - Cost per unit: $${prodCost}</div>
             <div class="actions">
               <button onclick="game.upgradeLab('${drug.name}')">Upgrade ($${lab.getUpgradeCost()})</button>
             </div>
@@ -308,7 +352,6 @@
         labs.appendChild(el);
       });
 
-      // Dealers
       dealers.innerHTML = '';
       ['Dealer Mike', 'Dealer Sara', 'Dealer Juan'].forEach(name => {
         const dealer = this.player.ensureDealer(name);
@@ -349,13 +392,12 @@
 
     buyLab(drugName) {
       const lab = this.player.ensureLab(drugName);
-      if (!lab.owned && this.player.money >= 1000) {
-        this.player.money -= 1000;
+      const baseCost = lab.getBaseCost();
+      if (!lab.owned && this.player.money >= baseCost) {
+        this.player.money -= baseCost;
         lab.owned = true;
         lab.level = 1;
         this.updateUI();
-      } else {
-        alert("Not enough money or already owned.");
       }
     }
 
@@ -366,8 +408,6 @@
         this.player.money -= cost;
         lab.level++;
         this.updateUI();
-      } else {
-        alert("Not enough money to upgrade.");
       }
     }
 
@@ -378,8 +418,6 @@
         dealer.owned = true;
         dealer.level = 1;
         this.updateUI();
-      } else {
-        alert("Not enough money or already hired.");
       }
     }
 
@@ -390,33 +428,40 @@
         this.player.money -= cost;
         dealer.level++;
         this.updateUI();
-      } else {
-        alert("Not enough money to upgrade dealer.");
       }
     }
 
     nextDay() {
       this.player.day++;
 
-// Police bust (only if player has drugs)
-if (Object.keys(this.player.inventory).length > 0) {
-  const risk = Math.random();
-  if (risk < 0.1) {
-    alert("🚨 Police bust! You lost all your drugs.");
-    this.player.resetInventory();
-  } else if (risk < 0.2) {
-    const fine = Math.floor(200 + Math.random() * 500);
-    this.player.money = Math.max(0, this.player.money - fine);
-    alert(`🚔 Busted! You paid a $${fine} fine.`);
-  }
-}
+      if (Object.keys(this.player.inventory).length > 0) {
+        const risk = Math.random();
+        if (risk < 0.1) {
+          alert("🚨 DEA raid! You lost all your drugs.");
+          this.player.resetInventory();
+        } else if (risk < 0.2) {
+          const fine = Math.floor(200 + Math.random() * 500);
+          this.player.money = Math.max(0, this.player.money - fine);
+        }
+      }
 
-      // Update prices, produce and auto-sell
       this.drugs.forEach(drug => drug.updatePrice());
       this.player.produceDrugs();
       this.player.autoSellDrugs(this.drugs);
-
       this.updateUI();
+    }
+
+    saveGame() {
+      localStorage.setItem('drugDealerSave', JSON.stringify(this.player));
+    }
+
+    loadGame() {
+      const data = localStorage.getItem('drugDealerSave');
+      if (data) {
+        const obj = JSON.parse(data);
+        Object.assign(this.player, obj);
+        this.updateUI();
+      }
     }
   }
 
