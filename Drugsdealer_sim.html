@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<!-- Code by Jay5cool2! -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Drug Dealer Simulator</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      padding: 20px;
+      background: #1a1a1a;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,255,200,0.2);
+    }
+
+    h1 {
+      text-align: center;
+      color: #00ffc8;
+    }
+
+    .section {
+      margin-top: 30px;
+    }
+
+    button {
+      background-color: #00ffc8;
+      color: #000;
+      border: none;
+      padding: 10px 15px;
+      margin: 5px 5px 5px 0;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #00cfa5;
+    }
+
+    .card {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 10px;
+      background: #222;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      flex-wrap: wrap;
+    }
+
+    .card div {
+      flex: 1;
+      padding: 5px;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>💊 Drug Dealer Simulator</h1>
+
+  <div class="section" id="status"></div>
+
+  <div class="section">
+    <h2>📈 Market</h2>
+    <div id="market"></div>
+  </div>
+
+  <div class="section">
+    <h2>🏭 Drug Labs</h2>
+    <div id="labs"></div>
+  </div>
+
+  <div class="section">
+    <h2>🧍 Dealers</h2>
+    <div id="dealers"></div>
+  </div>
+
+  <div class="section">
+    <button onclick="game.nextDay()">▶ Next Day</button>
+  </div>
+</div>
+
+<script>
+  class Drug {
+    constructor(name, basePrice) {
+      this.name = name;
+      this.basePrice = basePrice;
+      this.price = this.randomPrice();
+    }
+
+    randomPrice() {
+      return Math.floor(this.basePrice * (0.6 + Math.random() * 1.6));
+    }
+
+    updatePrice() {
+      this.price = this.randomPrice();
+    }
+  }
+
+  class Lab {
+    constructor(drugName) {
+      this.drugName = drugName;
+      this.owned = false;
+      this.level = 0;
+    }
+
+    getUpgradeCost() {
+      return 1000 * (this.level + 1);
+    }
+
+    produce() {
+      return this.owned ? this.level : 0;
+    }
+  }
+
+  class Dealer {
+    constructor(name) {
+      this.name = name;
+      this.owned = false;
+      this.level = 0;
+    }
+
+    getUpgradeCost() {
+      return 1200 * (this.level + 1);
+    }
+
+    sellCapacity() {
+      return this.owned ? this.level * 2 : 0;
+    }
+  }
+
+  class Player {
+    constructor() {
+      this.money = 2000;
+      this.inventory = {};
+      this.day = 1;
+      this.labs = {};
+      this.dealers = {};
+    }
+
+    ensureLab(drugName) {
+      if (!this.labs[drugName]) {
+        this.labs[drugName] = new Lab(drugName);
+      }
+      return this.labs[drugName];
+    }
+
+    ensureDealer(name) {
+      if (!this.dealers[name]) {
+        this.dealers[name] = new Dealer(name);
+      }
+      return this.dealers[name];
+    }
+
+    buy(drug) {
+      if (this.money >= drug.price) {
+        this.money -= drug.price;
+        this.inventory[drug.name] = (this.inventory[drug.name] || 0) + 1;
+      } else {
+        alert("Not enough cash.");
+      }
+    }
+
+    sell(drug) {
+      if (this.inventory[drug.name] > 0) {
+        this.money += drug.price;
+        this.inventory[drug.name]--;
+        if (this.inventory[drug.name] === 0) {
+          delete this.inventory[drug.name];
+        }
+      }
+    }
+
+    resetInventory() {
+      this.inventory = {};
+    }
+
+    produceDrugs() {
+      for (const lab of Object.values(this.labs)) {
+        const amount = lab.produce();
+        if (amount > 0) {
+          this.inventory[lab.drugName] = (this.inventory[lab.drugName] || 0) + amount;
+        }
+      }
+    }
+
+    autoSellDrugs(drugs) {
+      let totalSold = 0;
+      let income = 0;
+
+      for (const dealer of Object.values(this.dealers)) {
+        const capacity = dealer.sellCapacity();
+        for (let i = 0; i < capacity; i++) {
+          const drugNames = Object.keys(this.inventory);
+          if (drugNames.length === 0) break;
+
+          const drugName = drugNames[Math.floor(Math.random() * drugNames.length)];
+          const drug = drugs.find(d => d.name === drugName);
+          if (this.inventory[drugName] > 0) {
+            this.inventory[drugName]--;
+            income += drug.price;
+            totalSold++;
+            if (this.inventory[drugName] === 0) {
+              delete this.inventory[drugName];
+            }
+          }
+        }
+      }
+
+      this.money += income;
+      if (totalSold > 0) {
+        alert(`🧍 Dealers sold ${totalSold} drugs for $${income}`);
+      }
+    }
+  }
+
+  class Game {
+    constructor() {
+      this.player = new Player();
+      this.drugs = [
+        new Drug("Weed", 100),
+        new Drug("Cocaine", 800),
+        new Drug("XTC", 300),
+        new Drug("Heroin", 600),
+        new Drug("Meth", 400)
+      ];
+      this.updateUI();
+    }
+
+    updateUI() {
+      const status = document.getElementById('status');
+      const market = document.getElementById('market');
+      const labs = document.getElementById('labs');
+      const dealers = document.getElementById('dealers');
+
+      status.innerHTML = `
+        <h2>📅 Day ${this.player.day}</h2>
+        <p>💵 Cash: <strong>$${this.player.money}</strong></p>
+        <p>🎒 Inventory: ${
+          Object.keys(this.player.inventory).length === 0 
+            ? 'Empty' 
+            : Object.entries(this.player.inventory)
+                .map(([k, v]) => `${k}: ${v}`).join(', ')
+        }</p>
+      `;
+
+      // Market
+      market.innerHTML = '';
+      this.drugs.forEach(drug => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML = `
+          <div><strong>${drug.name}</strong></div>
+          <div>💰 $${drug.price}</div>
+          <div class="actions">
+            <button onclick="game.buyDrug('${drug.name}')">Buy</button>
+            <button onclick="game.sellDrug('${drug.name}')" ${!this.player.inventory[drug.name] ? 'class="disabled"' : ''}>Sell</button>
+          </div>
+        `;
+        market.appendChild(el);
+      });
+
+      // Labs
+      labs.innerHTML = '';
+      this.drugs.forEach(drug => {
+        const lab = this.player.ensureLab(drug.name);
+        const el = document.createElement('div');
+        el.className = 'card';
+        if (!lab.owned) {
+          el.innerHTML = `
+            <div><strong>${drug.name} Lab</strong></div>
+            <div>🏭 Not owned</div>
+            <div class="actions">
+              <button onclick="game.buyLab('${drug.name}')">Buy Lab ($1000)</button>
+            </div>
+          `;
+        } else {
+          el.innerHTML = `
+            <div><strong>${drug.name} Lab</strong></div>
+            <div>🏭 Level ${lab.level}</div>
+            <div class="actions">
+              <button onclick="game.upgradeLab('${drug.name}')">Upgrade ($${lab.getUpgradeCost()})</button>
+            </div>
+          `;
+        }
+        labs.appendChild(el);
+      });
+
+      // Dealers
+      dealers.innerHTML = '';
+      ['Dealer Mike', 'Dealer Sara', 'Dealer Juan'].forEach(name => {
+        const dealer = this.player.ensureDealer(name);
+        const el = document.createElement('div');
+        el.className = 'card';
+        if (!dealer.owned) {
+          el.innerHTML = `
+            <div><strong>${name}</strong></div>
+            <div>🧍 Not hired</div>
+            <div class="actions">
+              <button onclick="game.hireDealer('${name}')">Hire ($1000)</button>
+            </div>
+          `;
+        } else {
+          el.innerHTML = `
+            <div><strong>${name}</strong></div>
+            <div>🧍 Level ${dealer.level} (Sells ${dealer.sellCapacity()} per day)</div>
+            <div class="actions">
+              <button onclick="game.upgradeDealer('${name}')">Upgrade ($${dealer.getUpgradeCost()})</button>
+            </div>
+          `;
+        }
+        dealers.appendChild(el);
+      });
+    }
+
+    buyDrug(name) {
+      const drug = this.drugs.find(d => d.name === name);
+      this.player.buy(drug);
+      this.updateUI();
+    }
+
+    sellDrug(name) {
+      const drug = this.drugs.find(d => d.name === name);
+      this.player.sell(drug);
+      this.updateUI();
+    }
+
+    buyLab(drugName) {
+      const lab = this.player.ensureLab(drugName);
+      if (!lab.owned && this.player.money >= 1000) {
+        this.player.money -= 1000;
+        lab.owned = true;
+        lab.level = 1;
+        this.updateUI();
+      } else {
+        alert("Not enough money or already owned.");
+      }
+    }
+
+    upgradeLab(drugName) {
+      const lab = this.player.ensureLab(drugName);
+      const cost = lab.getUpgradeCost();
+      if (this.player.money >= cost) {
+        this.player.money -= cost;
+        lab.level++;
+        this.updateUI();
+      } else {
+        alert("Not enough money to upgrade.");
+      }
+    }
+
+    hireDealer(name) {
+      const dealer = this.player.ensureDealer(name);
+      if (!dealer.owned && this.player.money >= 1000) {
+        this.player.money -= 1000;
+        dealer.owned = true;
+        dealer.level = 1;
+        this.updateUI();
+      } else {
+        alert("Not enough money or already hired.");
+      }
+    }
+
+    upgradeDealer(name) {
+      const dealer = this.player.ensureDealer(name);
+      const cost = dealer.getUpgradeCost();
+      if (this.player.money >= cost) {
+        this.player.money -= cost;
+        dealer.level++;
+        this.updateUI();
+      } else {
+        alert("Not enough money to upgrade dealer.");
+      }
+    }
+
+    nextDay() {
+      this.player.day++;
+
+// Police bust (only if player has drugs)
+if (Object.keys(this.player.inventory).length > 0) {
+  const risk = Math.random();
+  if (risk < 0.1) {
+    alert("🚨 Police bust! You lost all your drugs.");
+    this.player.resetInventory();
+  } else if (risk < 0.2) {
+    const fine = Math.floor(200 + Math.random() * 500);
+    this.player.money = Math.max(0, this.player.money - fine);
+    alert(`🚔 Busted! You paid a $${fine} fine.`);
+  }
+}
+
+      // Update prices, produce and auto-sell
+      this.drugs.forEach(drug => drug.updatePrice());
+      this.player.produceDrugs();
+      this.player.autoSellDrugs(this.drugs);
+
+      this.updateUI();
+    }
+  }
+
+  const game = new Game();
+  window.game = game;
+</script>
+
+</body>
+</html>
